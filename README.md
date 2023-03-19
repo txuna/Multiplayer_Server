@@ -15,7 +15,7 @@ Input Protocol
 
 ### Server -> Client 
 State - 게임내 클라이언트의 입력값 처리 결과를 전송 
-- state(1byte) - slot_id(4byte) - velocity_x(4byte float) - velocity_y(4byte float) 
+- state(1byte) - numOfplayer(1byte) - slot_id(4byte) - velocity_x(4byte float) - velocity_y(4byte float) 
 slot_id(4byte) - velocity_x(4byte float) - velocity_y(4byte float) ... 
 
 AssignId - 플레이가 처음 접속했을 떄 자신의 ID와 위치를 받음
