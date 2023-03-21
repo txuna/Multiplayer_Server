@@ -38,11 +38,13 @@ enum class ServerMessage : char{
     State, 
     AssignId, 
     JoinPlayer, 
-    LeavePlayer 
+    LeavePlayer,
+    SetOtherPlayerPosition
 }; 
 
 enum class ClientMessage : char{
-    Input
+    Input,
+    Position
 };
 
 class Net
@@ -98,6 +100,7 @@ class Client
         Socket socket;         
         struct ClientInput client_input;
         struct Velocity velocity; 
+        struct Velocity position; 
 };
 
 
@@ -125,7 +128,7 @@ class TcpState
         TcpState();
         Client clients[MAX_CLIENT];
         Socket server_socket;
-        Client add_client();
+        Client* add_client();
         bool del_client(int fd); 
         Client get_client(int fd);
         void debug(); 

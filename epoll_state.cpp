@@ -11,7 +11,7 @@ TcpState::TcpState()
 }
 
 // flag가 false일시 메시지 보내고 close()
-Client TcpState::add_client()
+Client* TcpState::add_client()
 {
     for(int i=0; i<MAX_CLIENT; i++)
     {
@@ -20,7 +20,7 @@ Client TcpState::add_client()
             Socket socket = server_socket.accept_socket();
             clients[i].slot = i;
             clients[i].socket = socket;;
-            return clients[i];
+            return &clients[i];
         }
     }
     /* accept 요청 온것을 거부할 수 없기때문에 요청 승인 후 close */

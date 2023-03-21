@@ -55,9 +55,9 @@ int main(void)
                 {
                     try
                     {
-                        Client client = tcp_state.add_client();
-                        epoll_state.add_epoll(client.socket.get_fd(), EPOLLIN | EPOLLPRI);
-                        std::cout<<"new connected client "<<client.socket.get_fd()<<std::endl;
+                        Client* client = tcp_state.add_client();
+                        epoll_state.add_epoll(client->socket.get_fd(), EPOLLIN | EPOLLPRI);
+                        std::cout<<"new connected client "<<client->socket.get_fd()<<std::endl;
                         /* 접속에 성공한 클라이언트에게 ID제공 */
                         /* 
                             Protocol(1byte) - Slot(4byte) - x(4byte) - y(4byte)
@@ -66,45 +66,82 @@ int main(void)
                         int x, y; 
                         char protocol = (char)ServerMessage::AssignId; 
                         char buffer[SOCKET_BUFFER_SIZE]; 
+
+                        get_random_position(&x, &y); 
+                        client->position.x = x; 
+                        client->position.y = y;
+
                         memset(buffer, 0, SOCKET_BUFFER_SIZE);
                         memcpy(&buffer[0], &protocol, sizeof(protocol)); 
                         send_bytes+=sizeof(protocol); 
-                        memcpy(&buffer[1], &client.slot, sizeof(client.slot));
-                        send_bytes+=sizeof(client.slot);
-                        get_random_position(&x, &y); 
+                        memcpy(&buffer[1], &client->slot, sizeof(client->slot));
+                        send_bytes+=sizeof(client->slot);
                         memcpy(&buffer[send_bytes], &x, sizeof(x)); 
                         send_bytes+=sizeof(x); 
                         memcpy(&buffer[send_bytes], &y, sizeof(y));
                         send_bytes+=sizeof(y);
-                        if(!client.socket.socket_send(buffer, send_bytes))
+                        if(!client->socket.socket_send(buffer, send_bytes))
                         {
                             std::cout<<"socket send():Failed"<<std::endl;
                         }   
+
                         /* 다른 플레이어에게 해당 플레이어 접속 사실 알리기 */
                         /* Protocol(1byte) - Slot(4byte) - x(4byte) - y(4byte) */
                         send_bytes = 0; 
                         memset(buffer, 0, SOCKET_BUFFER_SIZE);
                         buffer[0] = (char)ServerMessage::JoinPlayer; 
                         send_bytes += 1;
-                        memcpy(&buffer[send_bytes], &client.slot, sizeof(client.slot)); 
-                        send_bytes += sizeof(client.slot);
+                        memcpy(&buffer[send_bytes], &(client->slot), sizeof(client->slot)); 
+                        send_bytes += sizeof(client->slot);
                         memcpy(&buffer[send_bytes], &x, sizeof(x)); 
                         send_bytes += sizeof(x);
                         memcpy(&buffer[send_bytes], &y, sizeof(y)); 
                         send_bytes += sizeof(y);
+                        
                         /* 전송 */
+                        char numOfplayer = 0;
                         for(int i=0; i<MAX_CLIENT; i++)
                         {
                             Client c = tcp_state.clients[i];
                             // 자기자신 제외 
-                            if(c.slot == UNUSED || c.socket.get_fd() == client.socket.get_fd()){
+                            if(c.slot == UNUSED || c.socket.get_fd() == client->socket.get_fd()){
                                 continue; 
                             }
+                            numOfplayer+=1;
                             if(!c.socket.socket_send(buffer, send_bytes))
                             {
                                 std::cout<<"socket send() Failed: "<<errno<<std::endl;
                             }
                         }
+                        /*
+                            접속에 성공한 플레이어에게 현재 접속한 플레이어들의 위치 전송
+                            protocol(1byte) - numOfPlayer(1byte) - slot(4byte) - x(4byte) - y(4byte)...
+                        */
+                        memset(buffer, 0, SOCKET_BUFFER_SIZE);
+                        send_bytes = 0;
+
+                        buffer[0] =(char)ServerMessage::SetOtherPlayerPosition; 
+                        send_bytes += 1; 
+                        buffer[1] = numOfplayer; 
+                        send_bytes += 1; 
+                        for(int i=0; i<MAX_CLIENT; i++)
+                        {
+                            Client c = tcp_state.clients[i]; 
+                            if(c.slot == UNUSED || c.socket.get_fd() == client->socket.get_fd()){
+                                continue; 
+                            }
+                            memcpy(&buffer[send_bytes], &c.slot, sizeof(c.slot)); 
+                            send_bytes += sizeof(c.slot); 
+                            memcpy(&buffer[send_bytes], &c.position.x, sizeof(c.position.x)); 
+                            send_bytes += sizeof(c.position.x); 
+                            memcpy(&buffer[send_bytes], &c.position.y, sizeof(c.position.y));
+                            send_bytes += sizeof(c.position.y);
+                        }      
+                        if(client->socket.socket_send(buffer, send_bytes) < 0)
+                        {
+                            std::cout<<"socket send() Failed: "<<errno<<std::endl;
+                        }
+
                         continue;
                     }
                     /* 클라이언트 배열에 남은 공간이 없을 시 */
@@ -174,7 +211,7 @@ int main(void)
                             bytes+=sizeof(y);
                             //std::cout<<"Id:"<<recv_slot_id<<"->"<<"("<<x<<", "<<y<<")"<<std::endl;
 
-                            if(recv_slot_id < 0 && received_bytes >= MAX_CLIENT)
+                            if(recv_slot_id < 0 && recv_slot_id >= MAX_CLIENT)
                             {
                                 continue; 
                             }
@@ -182,6 +219,26 @@ int main(void)
                             client->client_input.x = x; 
                             client->client_input.y = y;
                             break;
+                        }
+                        case ClientMessage::Position:
+                        {
+                            int recv_slot_id; 
+                            float x, y; 
+                            memcpy(&recv_slot_id, &buffer[bytes], sizeof(recv_slot_id)); 
+                            bytes+=sizeof(recv_slot_id); 
+                            memcpy(&x, &buffer[bytes], sizeof(x)); 
+                            bytes+=sizeof(x); 
+                            memcpy(&y, &buffer[bytes], sizeof(y)); 
+                            bytes+=sizeof(y);
+
+                            if(recv_slot_id < 0 && recv_slot_id >= MAX_CLIENT)
+                            {
+                                continue; 
+                            }
+                            Client* client = &tcp_state.clients[recv_slot_id]; 
+                            client->position.x = x; 
+                            client->position.y = y; 
+                            break; 
                         }
                         /* 무한 루프 가능성 있음 */
                         default:
@@ -252,6 +309,7 @@ int main(void)
                 std::cout<<"socket send() Failed: "<<errno<<std::endl; 
                 continue; 
             }
+            //printf("Position fd(%d) - (%f, %f)\n", client.socket.get_fd(), client.position.x, client.position.y);
         }
 
         time_clock::time_point end = time_clock::now();
